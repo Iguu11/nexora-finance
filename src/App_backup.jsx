@@ -1,11 +1,8 @@
-import LoginSupabase from './LoginSupabase'
-import { signOut } from './authService'
 import React, { useEffect, useMemo, useState } from 'react'
 import { Wallet, TrendingUp, TrendingDown, PiggyBank, Bot, Plus, Trash2, Target, CalendarDays, Search, AlertTriangle, CheckCircle2, Pencil, Download, Upload, Moon, Sun, Settings, Calculator, CreditCard, RotateCcw, Save, X, User, LogOut, FileText, Bell, Repeat, MessageCircle, Database, ShieldCheck } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
-import { supabase } from './supabaseClient'
 
 // =====================================================
 // NEXORA FINANCE V2 - AGENTE FINANCEIRO WEB APP
@@ -40,23 +37,14 @@ function loadData() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY))
 function saveFile(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click() }
 
 export default function App() {
-
-  useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    console.log('SESSÃO:', data.session)
-  })
-}, [])
-  
   // =====================================================
   // LOGIN LOCAL
   // =====================================================
   // Esse login é local/offline para proteger a tela no navegador.
   // Para banco online real, veja o arquivo README: Supabase/Firebase.
- const [auth, setAuth] = useState(null)
-const [loginName, setLoginName] = useState('')
-const [loginEmail, setLoginEmail] = useState('')
-const [loginPassword, setLoginPassword] = useState('')
-const [isRegister, setIsRegister] = useState(false)
+  const [auth, setAuth] = useState(() => JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'))
+  const [loginName, setLoginName] = useState('')
+  const [loginEmail, setLoginEmail] = useState('')
 
   const [data, setData] = useState(loadData)
   const [theme, setTheme] = useState(localStorage.getItem(THEME_KEY) || 'dark')
@@ -452,16 +440,8 @@ const [isRegister, setIsRegister] = useState(false)
     doc.save(reportFileName('pdf'))
   }
 
-if (!auth) return (
-  <LoginSupabase
-    theme={theme}
-    setTheme={setTheme}
-    onLogin={user => {
-      setAuth(user)
-      setData(p => ({ ...p, user }))
-    }}
-  />
-)
+  if (!auth) return <LoginScreen theme={theme} setTheme={setTheme} loginName={loginName} setLoginName={setLoginName} loginEmail={loginEmail} setLoginEmail={setLoginEmail} login={login} />
+
   return <div className={`app ${theme}`}>
     <header className="topbar">
       <div className="brand"><div className="logo">NX</div><div><h1>Nexora Finance</h1><p>Agent financeiro completo • {auth.name}</p></div></div>
