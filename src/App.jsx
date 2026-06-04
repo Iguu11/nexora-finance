@@ -40,12 +40,6 @@ function loadData() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY))
 function saveFile(name, content, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click() }
 
 export default function App() {
-
-  useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    console.log('SESSÃO:', data.session)
-  })
-}, [])
   
   // =====================================================
   // LOGIN LOCAL
@@ -294,8 +288,83 @@ const [isRegister, setIsRegister] = useState(false)
     XLSX.writeFile(wb, reportFileName('xlsx'))
   }
 
-  function exportBackup() { saveFile('backup-nexora-finance.json', JSON.stringify(data, null, 2), 'application/json') }
-  function importBackup(e) { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = () => { try { setData(JSON.parse(r.result)); alert('Backup restaurado!') } catch { alert('Arquivo inválido.') } }; r.readAsText(file) }
+  // =====================================================
+  // BACKUP E RESTAURAÇÃO DO SISTEMA
+  // =====================================================
+  // Exporta um arquivo .json com os dados financeiros e configurações principais.
+  // Use esse arquivo para restaurar o Nexora em caso de perda de dados, troca de navegador
+  // ou problema após alguma atualização.
+  function exportBackup() {
+    const backup = {
+      app: 'Nexora Finance',
+      type: 'nexora-full-backup',
+      version: '3.0',
+      createdAt: new Date().toISOString(),
+      createdAtBR: new Date().toLocaleString('pt-BR'),
+      user: data.user || auth || null,
+      theme,
+      selectedMonth,
+      data
+    }
+
+    saveFile(
+      `backup-nexora-finance-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify(backup, null, 2),
+      'application/json'
+    )
+  }
+
+  function restoreBackupObject(backup) {
+    const restoredData = backup?.data || backup
+
+    if (!restoredData || !Array.isArray(restoredData.transactions) || !Array.isArray(restoredData.categories)) {
+      throw new Error('Este arquivo não parece ser um backup válido do Nexora Finance.')
+    }
+
+    const confirmRestore = confirm(
+      'Restaurar este backup vai substituir os dados atuais deste navegador. Deseja continuar?'
+    )
+
+    if (!confirmRestore) return
+
+    // Cria uma cópia de segurança automática antes de substituir os dados atuais.
+    localStorage.setItem(
+      `nexora_auto_backup_before_restore_${Date.now()}`,
+      JSON.stringify({ data, theme, selectedMonth, createdAt: new Date().toISOString() })
+    )
+
+    setData({ ...defaultData, ...restoredData })
+
+    if (backup?.theme) {
+      setTheme(backup.theme)
+    }
+
+    if (backup?.selectedMonth) {
+      setSelectedMonth(backup.selectedMonth)
+    }
+
+    alert('Backup restaurado com sucesso!')
+  }
+
+  function importBackup(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      try {
+        const backup = JSON.parse(reader.result)
+        restoreBackupObject(backup)
+      } catch (error) {
+        alert(error.message || 'Arquivo de backup inválido.')
+      } finally {
+        e.target.value = ''
+      }
+    }
+
+    reader.readAsText(file)
+  }
 
   // =====================================================
   // EXPORTAÇÃO PDF EMPRESARIAL
@@ -492,7 +561,7 @@ function Movements(p){ const {data,form,setForm,emptyForm,saveTransaction,editTr
 function Budgets({ data, stats, setBudget }) { return <Panel title="Orçamento por categoria" icon={<Calculator/>}><div className="budgetList">{data.categories.filter(c=>c!=='Renda').map(cat=>{ const used=stats.byCategory[cat]||0; const limit=data.budgets[cat]||0; return <div className="budget" key={cat}><div><b>{cat}</b><p>Usado: {money(used)}</p></div><input type="number" value={limit} onChange={e=>setBudget(cat,e.target.value)}/><Progress value={limit?Math.min(100,Math.round((used/limit)*100)):0} danger={limit&&used>limit}/></div>})}</div></Panel> }
 function AgentChat({ chat, chatInput, setChatInput, sendChat }) { return <Panel title="Agent em formato chat" icon={<MessageCircle/>}><div className="chatBox">{chat.map((m,i)=><div key={i} className={`msg ${m.role}`}>{m.text}</div>)}</div><div className="chatInput"><input placeholder="Ex: posso gastar quanto hoje?" value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendChat()}/><button className="primary" onClick={sendChat}>Enviar</button></div></Panel> }
 function Alerts({ alerts, togglePaid }) { return <Panel title="Alertas de vencimento" icon={<Bell/>}>{alerts.length===0?<p>Nenhuma conta vencendo nos próximos 7 dias.</p>:<div className="list">{alerts.map(a=><div className="item" key={a.id}><div><b>{a.title}</b><p>{a.diff<0?`Vencida há ${Math.abs(a.diff)} dia(s)`:a.diff===0?'Vence hoje':`Vence em ${a.diff} dia(s)`} • {money(a.amount)}</p></div><button className="primary" onClick={()=>togglePaid(a.id)}>Marcar pago</button></div>)}</div>}</Panel> }
-function Tools({ data, setData, stats, exportExcel, exportBackup, importBackup, exportPDF }) { return <div className="gridTwo"><Panel title="Relatórios e backup" icon={<FileText/>}><div className="stack"><button className="primary" onClick={exportExcel}><Download size={17}/> Exportar Excel</button><button className="primary" onClick={exportPDF}><FileText size={17}/> Relatório PDF</button><button className="primary" onClick={exportBackup}><Download size={17}/> Backup JSON</button><label className="upload"><Upload size={17}/> Restaurar backup<input type="file" accept="application/json" onChange={importBackup}/></label></div></Panel><Panel title="Reserva e dívidas" icon={<CreditCard/>}><label>Meses de reserva</label><input type="number" value={data.emergencyMonths} onChange={e=>setData(p=>({...p,emergencyMonths:Number(e.target.value)}))}/><p className="result">Reserva ideal: {money(stats.emergencyGoal)}</p><label>Nome da dívida</label><input value={data.debt.name} onChange={e=>setData(p=>({...p,debt:{...p.debt,name:e.target.value}}))}/><label>Total da dívida</label><input type="number" value={data.debt.total} onChange={e=>setData(p=>({...p,debt:{...p.debt,total:Number(e.target.value)}}))}/><label>Pagamento mensal</label><input type="number" value={data.debt.monthlyPayment} onChange={e=>setData(p=>({...p,debt:{...p.debt,monthlyPayment:Number(e.target.value)}}))}/><p className="result">Quitação em: {stats.debtMonths} mês(es)</p></Panel></div> }
+function Tools({ data, setData, stats, exportExcel, exportBackup, importBackup, exportPDF }) { return <div className="gridTwo"><Panel title="Relatórios" icon={<FileText/>}><div className="stack"><button className="primary" onClick={exportExcel}><Download size={17}/> Exportar Excel</button><button className="primary" onClick={exportPDF}><FileText size={17}/> Relatório PDF</button></div></Panel><Panel title="Backup e restauração" icon={<Database/>}><p>Crie um backup completo antes de atualizar o sistema ou restaurar dados se algo der problema.</p><div className="stack"><button className="primary" onClick={exportBackup}><Download size={17}/> Criar backup completo</button><label className="upload"><Upload size={17}/> Restaurar backup<input type="file" accept="application/json" onChange={importBackup}/></label></div><p className="muted">A restauração substitui os dados atuais deste navegador. Antes de restaurar, o Nexora salva uma cópia automática de segurança no navegador.</p></Panel><Panel title="Reserva e dívidas" icon={<CreditCard/>}><label>Meses de reserva</label><input type="number" value={data.emergencyMonths} onChange={e=>setData(p=>({...p,emergencyMonths:Number(e.target.value)}))}/><p className="result">Reserva ideal: {money(stats.emergencyGoal)}</p><label>Nome da dívida</label><input value={data.debt.name} onChange={e=>setData(p=>({...p,debt:{...p.debt,name:e.target.value}}))}/><label>Total da dívida</label><input type="number" value={data.debt.total} onChange={e=>setData(p=>({...p,debt:{...p.debt,total:Number(e.target.value)}}))}/><label>Pagamento mensal</label><input type="number" value={data.debt.monthlyPayment} onChange={e=>setData(p=>({...p,debt:{...p.debt,monthlyPayment:Number(e.target.value)}}))}/><p className="result">Quitação em: {stats.debtMonths} mês(es)</p></Panel></div> }
 function SettingsPanel({ data, setData, newCategory, setNewCategory, addCategory, deleteCategory }) { return <div className="gridTwo"><Panel title="Categorias" icon={<Settings/>}><div className="filterGrid"><input placeholder="Nova categoria" value={newCategory} onChange={e=>setNewCategory(e.target.value)}/><button className="primary" onClick={addCategory}><Plus size={17}/>Adicionar</button></div><div className="chips">{data.categories.map(c=><span key={c}>{c}<button onClick={()=>deleteCategory(c)}>×</button></span>)}</div></Panel><Panel title="Banco online" icon={<Database/>}><p>O app está pronto para trocar LocalStorage por Supabase/Firebase. Veja o README para configurar autenticação e banco real.</p><div className="badge"><ShieldCheck/> Preparado para hospedagem e PWA</div></Panel></div> }
 function Stat({ icon, label, value, danger }) { return <div className="stat"><div className={`statIcon ${danger?'dangerBg':''}`}>{icon}</div><p>{label}</p><h3>{value}</h3></div> }
 function Panel({ title, icon, children }) { return <section className="panel"><h2>{icon}{title}</h2>{children}</section> }
