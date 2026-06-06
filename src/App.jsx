@@ -46,8 +46,55 @@ function userStorageKey(auth) {
 }
 
 function loadUserData(auth) {
-  const loaded = safeParse(localStorage.getItem(userStorageKey(auth)), null)
-  return loaded ? { ...defaultData, ...loaded, smartRules: { ...defaultData.smartRules, ...(loaded.smartRules || {}) } } : { ...defaultData, user: { name: auth?.name || '', email: auth?.email || '' } }
+  const newKey = userStorageKey(auth)
+  const oldKey = 'nexora_finance_data_v2'
+
+  const newData = safeParse(localStorage.getItem(newKey), null)
+
+  if (newData) {
+    return {
+      ...defaultData,
+      ...newData,
+      user: {
+        name: auth?.name || newData.user?.name || '',
+        email: auth?.email || newData.user?.email || ''
+      },
+      smartRules: {
+        ...defaultData.smartRules,
+        ...(newData.smartRules || {})
+      }
+    }
+  }
+
+  const oldData = safeParse(localStorage.getItem(oldKey), null)
+
+  if (oldData) {
+    const migratedData = {
+      ...defaultData,
+      ...oldData,
+      user: {
+        name: auth?.name || oldData.user?.name || '',
+        email: auth?.email || oldData.user?.email || ''
+      },
+      smartRules: {
+        ...defaultData.smartRules,
+        ...(oldData.smartRules || {})
+      }
+    }
+
+    localStorage.setItem(newKey, JSON.stringify(migratedData))
+    localStorage.setItem(`${oldKey}_migrated_backup`, JSON.stringify(oldData))
+
+    return migratedData
+  }
+
+  return {
+    ...defaultData,
+    user: {
+      name: auth?.name || '',
+      email: auth?.email || ''
+    }
+  }
 }
 
 function saveFile(name, content, type) {
